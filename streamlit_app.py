@@ -1,10 +1,9 @@
-
-
 import streamlit as st
 import json
 import pydeck as pdk
+import geopandas as gpd  # <-- Added this
 import os
-
+from hail_pipeline import generate_state_data
 # --- Constants ---
 PROCESSED_FOLDER = "census_data"
 STATE_OPTIONS = ["MO", "KS", "IA", "NE"]
@@ -62,6 +61,20 @@ polygon_layer = pdk.Layer(
     auto_highlight=True,
 )
 
+# --- Hail Points Layer ---
+hail_path = f"{PROCESSED_FOLDER}/hail_points_{selected_state}.geojson"
+hail_layer = None
+if os.path.exists(hail_path):
+    hail_gdf = gpd.read_file(hail_path).to_crs(epsg=4326)
+    hail_layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=hail_gdf,
+        get_position="geometry.coordinates",
+        get_radius=3000,
+        get_fill_color=[255, 0, 0, 180],
+        pickable=True,
+    )
+
 # --- View Setup (Missouri Default) ---
 state_centers = {
     "MO": (38.5, -92.5),
@@ -72,12 +85,16 @@ state_centers = {
 lat, lon = state_centers[selected_state]
 view_state = pdk.ViewState(latitude=lat, longitude=lon, zoom=6, pitch=0)
 
+# --- Deck Layers ---
+layers = [polygon_layer]
+if hail_layer:
+    layers.append(hail_layer)
+
 # --- Render ---
 r = pdk.Deck(
-    layers=[polygon_layer],
+    layers=layers,
     initial_view_state=view_state,
     tooltip={"text": "{tooltip_text}"}
 )
 
 st.pydeck_chart(r, use_container_width=True, height=800)
-
