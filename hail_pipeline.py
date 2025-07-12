@@ -1,4 +1,3 @@
-
 import os
 import pandas as pd
 import geopandas as gpd
@@ -9,8 +8,8 @@ HAIL_FOLDER = "hail_reports"
 TRACT_FOLDER = "census_data/tracts"
 OWNERSHIP_FOLDER = "census_data/vehicle_ownership"
 PROCESSED_FOLDER = "census_data"
+INCOME_CSV_PATH = "census_data/income_by_tract.csv"
 
-# Ensure folders exist
 os.makedirs(HAIL_FOLDER, exist_ok=True)
 os.makedirs(TRACT_FOLDER, exist_ok=True)
 os.makedirs(OWNERSHIP_FOLDER, exist_ok=True)
@@ -45,6 +44,7 @@ def load_and_merge_tracts(abbr, shapefile_path, csv_path):
     ]
     gdf["households_with_vehicles"] = gdf[vehicle_cols].sum(axis=1)
     return gdf
+
 def generate_state_data():
     hail_df = download_hail_report()
     hail_df = hail_df.dropna(subset=["Lat", "Lon"])
@@ -67,12 +67,22 @@ def generate_state_data():
         if abbr == "MO":
             gdf = gdf[gdf["INTPTLON"].astype(float) < -92.3]
 
+        income_df = pd.read_csv(INCOME_CSV_PATH)
+        income_df["state"] = income_df["state"].astype(str).str.zfill(2)
+        income_df["county"] = income_df["county"].astype(str).str.zfill(3)
+        income_df["tract_geoid"] = income_df["tract_geoid"].astype(str).str.zfill(11)
+        income_cols = ["tract_geoid", "per_capita_income", "median_income", "total_population"]
+        gdf = gdf.merge(income_df[income_cols], left_on="GEOID", right_on="tract_geoid", how="left")
+
         gdf["land_area_km2"] = gdf["ALAND"].astype(float) / 1_000_000
         gdf["car_ownership_density"] = gdf["households_with_vehicles"] / gdf["land_area_km2"]
-        gdf = gdf.dropna(subset=["car_ownership_density"])
-        gdf["car_ownership_density"] = gdf["car_ownership_density"].round(2)
+        gdf["population_density"] = gdf["total_population"] / gdf["land_area_km2"]
+
+        gdf["car_ownership_density"] = gdf["car_ownership_density"].fillna(0).round(2)
+        gdf["population_density"] = gdf["population_density"].fillna(0).round(2)
+
         hail_gdf_proj = hail_gdf.to_crs(gdf.crs)
-        hail_within = hail_gdf_proj[hail_gdf_proj.within(gdf.unary_union)]
+        hail_within = hail_gdf_proj[hail_gdf_proj.within(gdf.geometry.union_all())]
 
         hail_per_tract = gpd.sjoin(hail_within, gdf, how="inner", predicate="within")
         hail_counts = hail_per_tract.groupby("GEOID").size().reset_index(name="hail_reports")
@@ -84,9 +94,10 @@ def generate_state_data():
         gdf.to_file(f"{PROCESSED_FOLDER}/gdf_{abbr}_with_hail_risk.geojson", driver="GeoJSON")
         hail_within.to_file(f"{PROCESSED_FOLDER}/hail_points_{abbr}.geojson", driver="GeoJSON")
         print(f"Saved processed files for {abbr}")
+        print(f"Columns in gdf for {abbr}:", gdf.columns.tolist())
+        print(f"Missing data in gdf for {abbr}:\n", gdf.isna().sum()[gdf.isna().sum() > 0])
 
 def run_hail_risk_pipeline():
-    """Loads all processed GeoJSONs and returns combined GeoDataFrames."""
     state_abbrs = ["MO", "KS", "IA", "NE"]
 
     gdf_all = gpd.GeoDataFrame(pd.concat([
@@ -94,13 +105,21 @@ def run_hail_risk_pipeline():
         for abbr in state_abbrs if os.path.exists(f"{PROCESSED_FOLDER}/gdf_{abbr}_with_hail_risk.geojson")
     ], ignore_index=True), crs="EPSG:4326")
 
+    income_df = pd.read_csv(INCOME_CSV_PATH)
+    income_df["tract_geoid"] = income_df["tract_geoid"].astype(str).str.zfill(11)
+    gdf_all["GEOID"] = gdf_all["GEOID"].astype(str).str.zfill(11)
+
+    gdf_all = gdf_all.merge(
+        income_df[["tract_geoid", "median_income", "per_capita_income", "total_population"]],
+        left_on="GEOID", right_on="tract_geoid", how="left"
+    )
+
     hail_gdf = gpd.GeoDataFrame(pd.concat([
         gpd.read_file(f"{PROCESSED_FOLDER}/hail_points_{abbr}.geojson")
         for abbr in state_abbrs if os.path.exists(f"{PROCESSED_FOLDER}/hail_points_{abbr}.geojson")
     ], ignore_index=True), crs="EPSG:4326")
 
     return gdf_all, hail_gdf
-
 
 if __name__ == "__main__":
     generate_state_data()

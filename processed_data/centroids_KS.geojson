@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "centroids_KS",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::4269" } },
+"features": [
+
+]
+}
