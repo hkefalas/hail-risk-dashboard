@@ -22,9 +22,25 @@ def merge_data(tracts_gdf, vehicles_df, income_df):
     vehicles_df["tract_geoid"] = vehicles_df["tract_geoid"].astype(str).str.zfill(11)
     income_df["tract_geoid"] = income_df["tract_geoid"].astype(str).str.zfill(11)
 
-    # Merge
-    merged_gdf = tracts_gdf.merge(vehicles_df, left_on=["GEOID", "state_abbr"], right_on=["tract_geoid", "state_abbr"], how="left")
-    merged_gdf = merged_gdf.merge(income_df, left_on="GEOID", right_on="tract_geoid", how="left")
+    # Merge tracts with vehicle data
+    merged_gdf = tracts_gdf.merge(
+        vehicles_df.drop(columns=['state_abbr']),  # Drop redundant state_abbr
+        left_on="GEOID",
+        right_on="tract_geoid",
+        how="left"
+    )
+
+    # Merge with income data
+    merged_gdf = merged_gdf.merge(
+        income_df,
+        left_on="GEOID",
+        right_on="tract_geoid",
+        how="left",
+        suffixes=('', '_income') # Add suffix to avoid column name conflicts
+    )
+
+    # Clean up columns
+    merged_gdf.drop(columns=['tract_geoid', 'tract_geoid_income'], inplace=True, errors='ignore')
 
     return merged_gdf
 
@@ -97,6 +113,7 @@ def process_all_data(tracts_gdf, vehicles_df, income_df, hail_gdf):
 
     merged_gdf = merge_data(tracts_gdf, vehicles_df, income_df)
     merged_gdf = calculate_densities_and_ownership(merged_gdf)
+
     merged_gdf = apply_filters(merged_gdf) # Apply filters before spatial join for efficiency
 
     final_gdf = calculate_hail_risk(merged_gdf, hail_gdf)
