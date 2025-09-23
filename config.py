@@ -56,4 +56,5 @@ LAYER_OPTIONS = {
 
 # A special value for a specific data filter in the original pipeline.
 # This is preserved to maintain the original logic.
+# This longitude is a proxy for highway 63, where everything west of the highway is in the business area.
 MISSOURI_LONGITUDE_FILTER = -92.3
