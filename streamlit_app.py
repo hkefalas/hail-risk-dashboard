@@ -4,6 +4,8 @@ import pydeck as pdk
 import geopandas as gpd  # <-- Added this
 import os
 from hail_pipeline import generate_state_data
+from generate_radar import generate_radar_url
+
 # --- Constants ---
 PROCESSED_FOLDER = "census_data"
 STATE_OPTIONS = ["MO", "KS", "IA", "NE"]
@@ -98,3 +100,23 @@ r = pdk.Deck(
 )
 
 st.pydeck_chart(r, use_container_width=True, height=800)
+
+
+
+# --- Radar Images from Iowa State ---
+st.subheader("Hail Events and Radar Images")
+rpt_path = f"hail_reports/2025-07-12.csv"
+
+if os.path.exists(rpt_path):
+    radar_df = generate_radar_url(rpt_path)
+
+    if not radar_df.empty and "Radar URL" in radar_df.columns:
+        radar_df["Radar Image"] = radar_df["Radar URL"].apply(lambda u: f"[View PNG]({u})")
+
+        st.markdown("### Radar Images ±30 minutes from Hail Reports")
+        st.write(radar_df[["Event Time", "Radar Time", "Radar Image"]].to_markdown(index=False), unsafe_allow_html=True)
+        st.dataframe(radar_df[["Event Time", "Radar Time", "Radar URL"]], use_container_width=True)
+    else:
+        st.info("No radar image URLs could be generated for the available hail events.")
+else:
+    st.info("No hail report found for 2025-07-12.")
