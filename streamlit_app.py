@@ -4,7 +4,7 @@ import pydeck as pdk
 import requests
 import os
 import json
-from config import STATES, LAYER_OPTIONS, PROCESSED_DATA_DIR
+from config import STATES, LAYER_OPTIONS, PROCESSED_DATA_DIR, HAIL_REPORTS_DIR
 from utils import setup_logging, load_geojson
 
 # Setup logger
@@ -103,14 +103,52 @@ polygon_layer = pdk.Layer(
     auto_highlight=True,
 )
 
+# --- Hail Data Layer ---
+hail_date = "2025-12-15"
+hail_report_path = os.path.join(HAIL_REPORTS_DIR, f"{hail_date}.csv")
+hail_df = pd.DataFrame()
+
+if os.path.exists(hail_report_path):
+    try:
+        hail_df = pd.read_csv(hail_report_path)
+        # Create tooltip text for hail points
+        # Ensure columns exist before using them
+        if {'Size', 'Location', 'Time', 'Lat', 'Lon'}.issubset(hail_df.columns):
+            hail_df["tooltip_text"] = (
+                "<b>Hail Report</b><br>"
+                "Size: " + hail_df["Size"].astype(str) + "<br>"
+                "Location: " + hail_df["Location"] + "<br>"
+                "Time: " + hail_df["Time"].astype(str)
+            )
+        else:
+            logger.warning("Hail report missing required columns")
+            hail_df = pd.DataFrame() # Clear if invalid
+    except Exception as e:
+        logger.error(f"Failed to load hail report: {e}")
+
+hail_layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=hail_df,
+    get_position='[Lon, Lat]',
+    get_fill_color='[255, 0, 0, 200]',
+    get_radius=5000,
+    radius_min_pixels=8,
+    radius_max_pixels=100,
+    pickable=True,
+)
+
 # --- View Setup ---
 # Get the center from the config
 lat, lon = STATES[selected_state]["center"]
 view_state = pdk.ViewState(latitude=lat, longitude=lon, zoom=6, pitch=30)
 
 # --- Render Map ---
+layers = [polygon_layer]
+if not hail_df.empty:
+    layers.append(hail_layer)
+
 r = pdk.Deck(
-    layers=[polygon_layer],
+    layers=layers,
     initial_view_state=view_state,
     tooltip={"html": "{tooltip_text}", "style": {"color": "white"}}
 
