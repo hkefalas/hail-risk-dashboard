@@ -91,8 +91,7 @@ for feature in data["features"]:
 polygon_layer = pdk.Layer(
     "GeoJsonLayer",
     data=data,
-    get_fill_color="[...properties.fill_color]",
-    get_polygon="coordinates",
+    get_fill_color="properties.fill_color",
     pickable=True,
     auto_highlight=True,
 )
