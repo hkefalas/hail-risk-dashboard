@@ -105,7 +105,7 @@ view_state = pdk.ViewState(latitude=lat, longitude=lon, zoom=6, pitch=30)
 r = pdk.Deck(
     layers=[polygon_layer],
     initial_view_state=view_state,
-    tooltip={"html": "{properties.tooltip_text}", "style": {"color": "white"}}
+    tooltip={"html": "{tooltip_text}", "style": {"color": "white"}}
 )
 
 st.pydeck_chart(r, use_container_width=True)
