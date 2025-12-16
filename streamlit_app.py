@@ -84,7 +84,14 @@ for feature in data["features"]:
     props = feature["properties"]
     value = props.get(field_to_visualize, 0)
     props["fill_color"] = get_color(value, field_to_visualize)
-    props["tooltip_text"] = f"{selected_layer}: {value:,.2f}<br>Tract: {props.get('GEOID', 'N/A')}"
+
+    # Handle None/NaN values for tooltip
+    if pd.isna(value):
+        formatted_value = "N/A"
+    else:
+        formatted_value = f"{value:,.2f}"
+
+    props["tooltip_text"] = f"{selected_layer}: {formatted_value}<br>Tract: {props.get('GEOID', 'N/A')}"
 
 
 # --- Pydeck Layer ---
