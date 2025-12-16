@@ -86,13 +86,19 @@ for feature in data["features"]:
     props["fill_color"] = get_color(value, field_to_visualize)
     props["tooltip_text"] = f"{selected_layer}: {value:,.2f}<br>Tract: {props.get('GEOID', 'N/A')}"
 
+    # Handle None/NaN values for tooltip
+    if pd.isna(value):
+        formatted_value = "N/A"
+    else:
+        formatted_value = f"{value:,.2f}"
+    
+    props["tooltip_text"] = f"{selected_layer}: {formatted_value}<br>Tract: {props.get('GEOID', 'N/A')}"
 
 # --- Pydeck Layer ---
 polygon_layer = pdk.Layer(
     "GeoJsonLayer",
-    data=data,
-    get_fill_color="[...properties.fill_color]",
-    get_polygon="coordinates",
+     data=data,
+    get_fill_color="properties.fill_color",
     pickable=True,
     auto_highlight=True,
 )
@@ -106,7 +112,8 @@ view_state = pdk.ViewState(latitude=lat, longitude=lon, zoom=6, pitch=30)
 r = pdk.Deck(
     layers=[polygon_layer],
     initial_view_state=view_state,
-    tooltip={"html": "{properties.tooltip_text}", "style": {"color": "white"}}
+    tooltip={"html": "{tooltip_text}", "style": {"color": "white"}}
+
 )
 
 st.pydeck_chart(r, use_container_width=True)
