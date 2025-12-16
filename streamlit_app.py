@@ -1,5 +1,6 @@
 import streamlit as st
 import pydeck as pdk
+import requests
 import os
 import json
 from config import STATES, LAYER_OPTIONS, PROCESSED_DATA_DIR
