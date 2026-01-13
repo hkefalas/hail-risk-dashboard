@@ -12,6 +12,21 @@ from utils import setup_logging, load_geojson, load_csv
 # Setup logger
 logger = setup_logging()
 
+# --- Helper Functions ---
+@st.cache_data
+def load_frame_paths():
+    if not os.path.exists(RADAR_FRAMES_DIR):
+        return []
+    files = sorted(glob.glob(os.path.join(RADAR_FRAMES_DIR, "*.png")))
+    return files
+
+def parse_timestamp(filename):
+    base = os.path.basename(filename).split('.')[0]
+    try:
+        return datetime.strptime(base, "%Y%m%d_%H%M%S")
+    except ValueError:
+        return base
+
 # --- UI Controls ---
 st.title("Hail Risk Dashboard")
 
@@ -25,6 +40,43 @@ if view_mode == "Risk Analysis":
 
     # Use keys from LAYER_OPTIONS for the layer selection
     selected_layer = st.selectbox("Select layer to visualize:", list(LAYER_OPTIONS.keys()), index=0)
+
+    # Overlay Radar Toggle
+    show_radar_overlay = st.sidebar.checkbox("Overlay Radar", value=False)
+
+    radar_layer = None
+    if show_radar_overlay:
+        st.sidebar.warning("Note: Radar overlay is currently fixed to the KDVN (Iowa/Illinois) region regardless of selected state.")
+        frame_files = load_frame_paths()
+        if frame_files:
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("**Radar Controls**")
+
+            timestamps = [parse_timestamp(f) for f in frame_files]
+
+            # Time Slider in Sidebar to save space on main map
+            frame_index = st.sidebar.slider(
+                "Radar Time",
+                min_value=0,
+                max_value=len(frame_files) - 1,
+                value=0,
+                format="%d"
+            )
+
+            # Timestamp display
+            current_ts = timestamps[frame_index]
+            if isinstance(current_ts, datetime):
+                st.sidebar.markdown(f"Time: {current_ts.strftime('%H:%M:%S')} UTC")
+
+            radar_layer = pdk.Layer(
+                "BitmapLayer",
+                image=frame_files[frame_index],
+                bounds=RADAR_BOUNDS,
+                opacity=0.6,
+                pickable=False
+            )
+        else:
+            st.sidebar.warning("No radar frames found.")
 
     # --- Load GeoJSON Data ---
     geojson_filename = f"gdf_{selected_state}_with_hail_risk.geojson"
@@ -108,6 +160,10 @@ if view_mode == "Risk Analysis":
         auto_highlight=True,
     )
 
+    layers = [polygon_layer]
+    if radar_layer:
+        layers.append(radar_layer)
+
     # --- View Setup ---
     # Get the center from the config
     lat, lon = STATES[selected_state]["center"]
@@ -115,7 +171,7 @@ if view_mode == "Risk Analysis":
 
     # --- Render Map ---
     r = pdk.Deck(
-        layers=[polygon_layer],
+        layers=layers,
         initial_view_state=view_state,
         tooltip={"html": "{tooltip_text}", "style": {"color": "white"}}
 
@@ -126,116 +182,112 @@ if view_mode == "Risk Analysis":
 elif view_mode == "Radar & Hail Reports":
     st.subheader("Radar & Hail Reports")
 
-    # --- Load Image Frames ---
-    @st.cache_data
-    def load_frame_paths():
-        if not os.path.exists(RADAR_FRAMES_DIR):
-            return []
-        files = sorted(glob.glob(os.path.join(RADAR_FRAMES_DIR, "*.png")))
-        return files
-
     frame_files = load_frame_paths()
 
-    if not frame_files:
-        st.error(f"No radar frames found in {RADAR_FRAMES_DIR}")
-        st.stop()
-
-    # Extract timestamps
-    def parse_timestamp(filename):
-        base = os.path.basename(filename).split('.')[0]
-        try:
-            return datetime.strptime(base, "%Y%m%d_%H%M%S")
-        except ValueError:
-            return base
-
-    timestamps = [parse_timestamp(f) for f in frame_files]
-
-    # --- Time Slider ---
-    frame_index = st.slider(
-        "Time Frame",
-        min_value=0,
-        max_value=len(frame_files) - 1,
-        value=0,
-        format="%d"
-    )
-
-    # Timestamp display
-    current_ts = timestamps[frame_index]
-    if isinstance(current_ts, datetime):
-        st.markdown(f"**Radar Timestamp:** {current_ts.strftime('%Y-%m-%d %H:%M:%S')} (UTC)")
-    else:
-        st.markdown(f"**Frame:** {current_ts}")
-
     # --- Load Hail Reports ---
-    # Ideally allow selection, but for now default to the one matching radar context
-    # or list available reports
     report_files = sorted(glob.glob(os.path.join(HAIL_REPORTS_DIR, "*.csv")))
-    report_options = [os.path.basename(f) for f in report_files]
 
-    # Try to select '2025-07-11.csv' by default as it matches the radar location context
-    default_report_index = 0
-    if "2025-07-11.csv" in report_options:
-        default_report_index = report_options.index("2025-07-11.csv")
+    if not report_files:
+        st.warning("No hail reports found in 'hail_reports' directory.")
+        selected_report_file = None
+        hail_df = pd.DataFrame()
+    else:
+        report_options = [os.path.basename(f) for f in report_files]
 
-    selected_report_file = st.selectbox("Select Hail Report Date:", report_options, index=default_report_index)
-    
-    hail_df = pd.DataFrame()
-    if selected_report_file:
-        report_path = os.path.join(HAIL_REPORTS_DIR, selected_report_file)
-        try:
-            hail_df = load_csv(report_path, logger=logger)
-            st.success(f"Loaded {len(hail_df)} hail reports.")
-        except Exception as e:
-            st.error(f"Error loading hail reports: {e}")
+        # Try to select '2025-07-11.csv' by default as it matches the radar location context (KDVN - IA)
+        # This is currently hardcoded logic that we are exposing to the user via a warning
+        default_report_index = 0
+        if "2025-07-11.csv" in report_options:
+            default_report_index = report_options.index("2025-07-11.csv")
 
-    # --- Pydeck Layers ---
-    layers = []
+        selected_report_file = st.selectbox("Select Hail Report Date:", report_options, index=default_report_index)
 
-    # Radar Layer
-    radar_layer = pdk.Layer(
-        "BitmapLayer",
-        image=frame_files[frame_index],
-        bounds=RADAR_BOUNDS,
-        opacity=0.6,
-        pickable=False
-    )
-    layers.append(radar_layer)
+        hail_df = pd.DataFrame()
+        if selected_report_file:
+            report_path = os.path.join(HAIL_REPORTS_DIR, selected_report_file)
+            try:
+                hail_df = load_csv(report_path, logger=logger)
+                st.success(f"Loaded {len(hail_df)} hail reports.")
+            except Exception as e:
+                st.error(f"Error loading hail reports: {e}")
 
-    # Hail Reports Layer
-    if not hail_df.empty:
-        # Construct tooltip text
-        hail_df["tooltip"] = hail_df.apply(
-            lambda row: f"Time: {row['Time']}<br>Size: {row['Size']}<br>Loc: {row['Location']}<br>County: {row['County']}, {row['State']}",
-            axis=1
+    # Check for radar availability (simplified check for now)
+    # The current radar frames are for KDVN (Quad Cities, IA/IL) around 2025-07-12
+    # If the user selects a different date or a location far from KDVN, we should warn them.
+
+    if not frame_files:
+         st.warning("No radar frames found. Please ensure 'radar_frames' directory is populated.")
+
+    else:
+        timestamps = [parse_timestamp(f) for f in frame_files]
+
+        # --- Time Slider ---
+        frame_index = st.slider(
+            "Time Frame",
+            min_value=0,
+            max_value=len(frame_files) - 1,
+            value=0,
+            format="%d"
         )
 
-        # Scatterplot for hail
-        hail_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=hail_df,
-            get_position=["Lon", "Lat"],
-            get_color=[255, 0, 0, 200], # Red
-            get_radius=2000, # Fixed radius for visibility, or scale by size
-            pickable=True,
-            auto_highlight=True
-        )
-        layers.append(hail_layer)
+        # Timestamp display
+        current_ts = timestamps[frame_index]
+        if isinstance(current_ts, datetime):
+            st.markdown(f"**Radar Timestamp:** {current_ts.strftime('%Y-%m-%d %H:%M:%S')} (UTC)")
+        else:
+            st.markdown(f"**Frame:** {current_ts}")
 
-    # --- View State ---
-    # Center map on radar bounds
-    view_state = pdk.ViewState(
-        latitude=(RADAR_BOUNDS[1] + RADAR_BOUNDS[3]) / 2,
-        longitude=(RADAR_BOUNDS[0] + RADAR_BOUNDS[2]) / 2,
-        zoom=7,
-        pitch=0
-    )
+        # Warning about static radar data
+        st.info("ℹ️ Currently displaying static radar imagery for KDVN (Quad Cities). Use with hail reports from this region.")
 
-    # --- Render Map ---
-    st.pydeck_chart(
-        pdk.Deck(
-            layers=layers,
-            initial_view_state=view_state,
-            map_style="mapbox://styles/mapbox/dark-v10",
-            tooltip={"html": "{tooltip}", "style": {"color": "white"}}
+        # --- Pydeck Layers ---
+        layers = []
+
+        # Radar Layer
+        radar_layer = pdk.Layer(
+            "BitmapLayer",
+            image=frame_files[frame_index],
+            bounds=RADAR_BOUNDS,
+            opacity=0.6,
+            pickable=False
         )
-    )
+        layers.append(radar_layer)
+
+        # Hail Reports Layer
+        if not hail_df.empty:
+            # Construct tooltip text
+            hail_df["tooltip"] = hail_df.apply(
+                lambda row: f"Time: {row['Time']}<br>Size: {row['Size']}<br>Loc: {row['Location']}<br>County: {row['County']}, {row['State']}",
+                axis=1
+            )
+
+            # Scatterplot for hail
+            hail_layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=hail_df,
+                get_position=["Lon", "Lat"],
+                get_color=[255, 0, 0, 200], # Red
+                get_radius=2000, # Fixed radius for visibility, or scale by size
+                pickable=True,
+                auto_highlight=True
+            )
+            layers.append(hail_layer)
+
+        # --- View State ---
+        # Center map on radar bounds
+        view_state = pdk.ViewState(
+            latitude=(RADAR_BOUNDS[1] + RADAR_BOUNDS[3]) / 2,
+            longitude=(RADAR_BOUNDS[0] + RADAR_BOUNDS[2]) / 2,
+            zoom=7,
+            pitch=0
+        )
+
+        # --- Render Map ---
+        st.pydeck_chart(
+            pdk.Deck(
+                layers=layers,
+                initial_view_state=view_state,
+                map_style="mapbox://styles/mapbox/dark-v10",
+                tooltip={"html": "{tooltip}", "style": {"color": "white"}}
+            )
+        )
