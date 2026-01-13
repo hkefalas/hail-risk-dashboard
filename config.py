@@ -5,6 +5,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "census_data")
 HAIL_REPORTS_DIR = os.path.join(BASE_DIR, "hail_reports")
 PROCESSED_DATA_DIR = os.path.join(DATA_DIR, "processed")
+RADAR_FRAMES_DIR = os.path.join(BASE_DIR, "radar_frames")
 
 # --- File Paths ---
 INCOME_CSV_PATH = os.path.join(DATA_DIR, "income_by_tract.csv")
@@ -53,6 +54,11 @@ LAYER_OPTIONS = {
     "Per Capita Income": "per_capita_income",
     "Hail Risk Score": "hail_risk_score",
 }
+
+# --- Radar Settings ---
+# Approximate lat/lon bounds for the radar frames (Iowa/Illinois region - KDVN)
+# Format: [west, south, east, north]
+RADAR_BOUNDS = [-93.6, 41.4, -90.6, 43.2]
 
 # A special value for a specific data filter in the original pipeline.
 # This is preserved to maintain the original logic.
