@@ -9,6 +9,7 @@ RADAR_FRAMES_DIR = os.path.join(BASE_DIR, "radar_frames")
 
 # --- File Paths ---
 INCOME_CSV_PATH = os.path.join(DATA_DIR, "income_by_tract.csv")
+NEXRAD_SITES_PATH = os.path.join(BASE_DIR, "station_list", "nexrad_sites.csv")
 
 # --- Data Source URLs ---
 HAIL_DATA_URL = "https://www.spc.noaa.gov/climo/reports/today_filtered_hail.csv"
